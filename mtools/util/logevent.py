@@ -217,7 +217,7 @@ class LogEvent(object):
                 return False
             return True
         else:
-            if not self.split_tokens[self._datetime_nextpos-1][0].isdigit():
+            if len(self.split_tokens) > 0 and not self.split_tokens[self._datetime_nextpos-1][0].isdigit():
                 _ = self.datetime
                 return False
             return True
@@ -575,7 +575,7 @@ class LogEvent(object):
                 dt_string += '.' + str(int(self.datetime.microsecond / 1000)).zfill(3)
         elif format == 'iso8601-local':
             dt_string = self.datetime.isoformat()
-            if not self.datetime.utcoffset():
+            if self.datetime.utcoffset() is None:
                 dt_string += '+00:00'
             ms_str = str(int(self.datetime.microsecond * 1000)).zfill(3)[:3]
             # change isoformat string to have 3 digit milliseconds and no : in offset

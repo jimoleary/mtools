@@ -31,6 +31,7 @@ class MLogFilterTool(LogFileTool):
         self.argparser.add_argument('--markers', action='store', nargs='*', default=['filename'], help='use markers when merging several files to distinguish them. Choose from none, enum, alpha, filename (default), or provide list.')
         self.argparser.add_argument('--timezone', action='store', nargs='*', default=[], type=int, metavar="N", help="timezone adjustments: add N hours to corresponding log file, single value for global adjustment.")
         self.argparser.add_argument('--timestamp-format', action='store', default='none', choices=['none', 'ctime-pre2.4', 'ctime', 'iso8601-utc', 'iso8601-local'], help="choose datetime format for log output")
+        self.argparser.add_argument('--optime-start', action='store_true', help='move time to when the operation started instead (by subtracting the duration).')
 
     def addFilter(self, filterClass):
         """ adds a filter class to the parser. """
@@ -55,6 +56,14 @@ class MLogFilterTool(LogFileTool):
             if self.args['timestamp_format'] == 'none':
                 self.args['timestamp_format'] = logevent.datetime_format
             logevent._reformat_timestamp(self.args['timestamp_format'], force=True)
+
+        if self.args['optime_start']:
+            if logevent.duration is not None and logevent.datetime:
+                # create new variable end_datetime in logevent object and store starttime there
+                logevent.end_datetime = logevent.datetime
+                logevent._datetime = logevent._datetime - timedelta(milliseconds=logevent.duration)
+                logevent._datetime_calculated = True
+                logevent._reformat_timestamp(logevent._datetime_format, force=True)
 
         if self.args['json']:
             print logevent.to_json()
