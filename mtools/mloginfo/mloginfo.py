@@ -50,7 +50,7 @@ class MLogInfoTool(LogFileTool):
             print "date format: %s" % self.logfile.datetime_format
             print "     length: %s" % len(self.logfile)
             print "     binary: %s" % (self.logfile.binary or "unknown")
-            
+
 
             version = (' -> '.join(self.logfile.versions) or "unknown")
 
@@ -66,6 +66,9 @@ class MLogInfoTool(LogFileTool):
 
             print "    version: %s" % version,
             print
+
+            if self.logfile.has_time_shifts:
+                print "  timeshift: True"
 
             # now run all sections
             for section in self.sections:

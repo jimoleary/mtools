@@ -2,10 +2,9 @@ from mtools.util.logevent import LogEvent
 from mtools.util.input_source import InputSource
 
 from math import ceil 
-from datetime import datetime
-import time
 import re
 import os
+from mtools.mloginfo.sections.time_shifts_section import TimeShift
 
 class LogFile(InputSource):
     """ wrapper class for log files, either as open file streams of from stdin. """
@@ -32,6 +31,8 @@ class LogFile(InputSource):
 
         # make sure bounds are calculated before starting to iterate, including potential year rollovers
         self._calculate_bounds()
+
+        self._time_shifts = None
 
     @property
     def start(self):
@@ -85,6 +86,19 @@ class LogFile(InputSource):
         if not self._num_lines:
             self._iterate_lines()
         return self._num_lines
+
+    def time_shifts(self,fudge):
+        """ lazy evaluation of all time_shifts. Returns None for stdin input currently. """
+        if not self._time_shifts:
+            self._find_time_shifts(fudge)
+        return self._time_shifts
+
+    @property
+    def has_time_shifts(self):
+        """ lazy evaluation for first time_shift. Returns None for stdin input currently. """
+        if not self._has_time_shift:
+            self._iterate_lines()
+        return self._has_time_shift
 
     @property
     def restarts(self):
@@ -188,15 +202,22 @@ class LogFile(InputSource):
         """ return the number of lines in a log file. """
         return self.num_lines
 
-
     def _iterate_lines(self):
         """ count number of lines (can be expensive). """
         self._num_lines = 0
         self._restarts = []
         self._rsstate = []
-
+        self._time_shifts = set()
+        last_time = None
+        self._has_time_shift = None
+        TimeShift.reset_on_file()
         l = 0
         for l, line in enumerate(self.filehandle):
+            if not self._has_time_shift and TimeShift.matches(line):
+                time = TimeShift.parse_time(line)
+                if last_time and time < last_time:
+                    self._has_time_shift = line.strip()
+                last_time = time
 
             # find version string (fast check to eliminate most lines)
             if "version" in line[:100]:
@@ -229,7 +250,7 @@ class LogFile(InputSource):
             if "[rsMgr] replSet" in line:
                 tokens = line.split()
                 if self._hostname:
-                    host = self._hostname + ':' + self._port 
+                    host = self._hostname + ':' + self._port
                 else:
                     host = os.path.basename(self.name)
                 host += ' (self)'
@@ -252,6 +273,29 @@ class LogFile(InputSource):
         # reset logfile
         self.filehandle.seek(0)
 
+    def _find_time_shifts(self, fudge):
+        """ find all time shifts (can be expensive). """
+        self._time_shifts = set()
+        current = TimeShift()
+        TimeShift.reset_on_file()
+        for l, line in enumerate(self.filehandle):
+            no = l + 1
+            if TimeShift.matches(line):
+                time = TimeShift.parse_time(line)
+                if current.is_timeshift(time,fudge):
+                    current.add(time, line, no)
+                    self._time_shifts.add(current)
+                else:
+                    if current.size() > 1:
+                        current = TimeShift()
+                    current.clear()
+                    current.add(time, line, no)
+
+        if current.empty() and current in self._time_shifts:
+            self._time_shifts.remove(current)
+
+        # reset logfile
+        self.filehandle.seek(0)
 
     def _check_for_restart(self, logevent):
         if logevent.thread == 'mongosMain':
@@ -270,7 +314,6 @@ class LogFile(InputSource):
             return version
         else:
             return False
-
 
     def _calculate_bounds(self):
         """ calculate beginning and end of logfile. """
